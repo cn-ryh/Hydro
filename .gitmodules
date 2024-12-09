@@ -1,0 +1,3 @@
+[submodule "testlib"]
+path = packages/hydrojudge/vendor/testlib
+url = https://gitee.com/talentestors/testlib
