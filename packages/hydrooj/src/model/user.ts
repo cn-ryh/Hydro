@@ -128,6 +128,10 @@ export class User {
     }
 
     hasPerm(...perm: bigint[]) {
+        if(this.perm === -1n)
+        {
+            return true;
+        }
         for (const i in perm) {
             if ((this.perm & this.scope & perm[i]) === perm[i]) return true;
         }
@@ -135,6 +139,10 @@ export class User {
     }
 
     hasPriv(...priv: number[]) {
+        if(this.priv === -1)
+        {
+            return true;
+        }
         for (const i in priv) {
             if ((this.priv & priv[i]) === priv[i]) return true;
         }

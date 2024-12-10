@@ -89,14 +89,14 @@ export type KoaContext = Koa.Context & {
 };
 
 const logger = new Logger('server');
-/** @deprecated */
-export const koa = new Koa<Koa.DefaultState, KoaContext>({
+export const koaServer = new Koa<Koa.DefaultState, KoaContext>({
     keys: [Math.random().toString(16).substring(2)],
+    
 });
 export const router = new Router();
-export const httpServer = http.createServer(koa.callback());
+export const httpServer = http.createServer(koaServer.callback());
 export const wsServer = new WebSocketServer({ server: httpServer });
-koa.on('error', (error) => {
+koaServer.on('error', (error) => {
     if (error.code !== 'EPIPE' && error.code !== 'ECONNRESET' && !error.message.includes('Parse Error')) {
         logger.error('Koa app-level error', { error });
     }
@@ -333,7 +333,7 @@ export class WebService extends Service {
     private captureAllRoutes = Object.create(null);
 
     renderers: Record<string, RendererFunction> = Object.create(null);
-    server = koa;
+    server = koaServer;
     router = router;
     HandlerCommon = HandlerCommon;
     Handler = Handler;
@@ -386,8 +386,8 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
             logger.debug('Using upload dir: %s', uploadDir);
             this.server.use(Body({
                 multipart: true,
-                jsonLimit: '8mb',
-                formLimit: '8mb',
+                jsonLimit: '512mb',
+                formLimit: '512mb',
                 formidable: {
                     uploadDir,
                     maxFileSize: parseMemoryMB(this.config.upload) * 1024 * 1024,
@@ -404,8 +404,8 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
         } else {
             this.server.use(Body({
                 multipart: true,
-                jsonLimit: '8mb',
-                formLimit: '8mb',
+                jsonLimit: '512mb',
+                formLimit: '512mb',
             }));
         }
         this.router.use((c, next) => executeMiddlewareStack(c, [
@@ -431,7 +431,7 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
                 } catch (e) { }
             });
             socket.pause();
-            const c: any = koa.createContext(request, {} as any);
+            const c: any = koaServer.createContext(request, {} as any);
             await executeMiddlewareStack(c, this.wsLayers);
             for (const manager of router.wsStack) {
                 if (manager.accept(socket, request, c)) return;
