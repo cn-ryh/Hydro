@@ -141,7 +141,7 @@ class MongoService {
         }
         const coll = this.db.collection(cursor.namespace.collection as any);
         const [count, pageDocs] = await Promise.all([
-            Object.keys(filter).length ? coll.count(filter) : coll.countDocuments(filter),
+            Object.keys(filter).length ? coll.countDocuments(filter) : coll.countDocuments(filter),
             cursor.skip((page - 1) * pageSize).limit(pageSize).toArray(),
         ]);
         const numPages = Math.floor((count + pageSize - 1) / pageSize);
