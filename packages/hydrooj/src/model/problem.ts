@@ -239,7 +239,11 @@ export class ProblemModel {
         if (!pid && original.pid && !await ProblemModel.get(target, original.pid)) pid = original.pid;
         return await ProblemModel.add(
             target, pid, original.title, original.content,
-            original.owner, original.tag, { hidden: original.hidden, reference: { domainId, pid: _id } },
+
+            original.owner, original.tag, {
+                hidden: original.hidden, reference: { domainId, pid: _id },
+            difficulty: original.difficulty
+        },
         );
     }
 
