@@ -6,6 +6,7 @@ import { Flatten } from './typeutils';
 
 const defaultPath = process.env.CI ? '/tmp/file'
     : process.env.DEFAULT_STORE_PATH || '/data/file/hydro';
+console.log('Using default path: ' + defaultPath);
 const FileSetting = Schema.intersect([
     Schema.object({
         type: Schema.union([
