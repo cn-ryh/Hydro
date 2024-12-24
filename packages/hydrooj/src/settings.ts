@@ -12,6 +12,7 @@ const FileSetting = Schema.intersect([
         type: Schema.union([
             Schema.const('file').description('local file provider'),
             Schema.const('s3').description('s3 provider'),
+            Schema.const(`e5`).description('Microsoft e5 provider'),
         ] as const).description('provider type'),
         endPointForUser: Schema.string().default('/fs/'),
         endPointForJudge: Schema.string().default('/fs/'),
@@ -31,6 +32,14 @@ const FileSetting = Schema.intersect([
             region: Schema.string().default('us-east-1'),
             pathStyle: Schema.boolean().default(true),
         }),
+        Schema.object({
+            type: Schema.const(`e5`).required(),
+            tenantId: Schema.string().required(),
+            clientId: Schema.string().required(),
+            username: Schema.string().required(),
+            basepath: Schema.string().default(`/hydro/`),
+            password: Schema.string().required(),
+        })
     ] as const),
 ] as const).default({
     type: 'file',

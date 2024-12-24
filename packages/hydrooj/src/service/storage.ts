@@ -17,6 +17,10 @@ import { Logger } from '../logger';
 import { builtinConfig } from '../settings';
 import { MaybeArray } from '../typeutils';
 import { md5, streamToBuffer } from '../utils';
+import { UsernamePasswordCredential } from '@azure/identity';
+import { Client } from '@microsoft/microsoft-graph-client';
+import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials'
+import axios from 'axios';
 
 const logger = new Logger('storage');
 
@@ -56,6 +60,114 @@ const convertPath = (p: string) => {
     }
     return p;
 };
+
+
+class MicrosoftE5StorageService {
+    public client: Client;
+    public error = '';
+    public basepath = '';
+    async start() {
+        try {
+            logger.info(`Starting storage service with Microsoft E5.`)
+            const { clientId, tenantId, username, password, basepath } = builtinConfig.file;
+            this.basepath = basepath;
+            const credential = new UsernamePasswordCredential(tenantId, clientId, username, password);
+            const authProvider = new TokenCredentialAuthenticationProvider(credential, {
+                scopes: ['Files.ReadWrite', 'Files.ReadWrite.All'],
+            });
+            this.client = Client.initWithMiddleware({ authProvider: authProvider });
+            logger.success('Storage connected.');
+        }
+        catch (e) {
+            logger.warn('Storage init fail. will retry later.');
+            if (process.env.DEV) logger.warn(e);
+            this.error = e.toString();
+            setTimeout(() => this.start(), 10000);
+        }
+    }
+    async put(target: string, file: string | Buffer | Readable, meta: Record<string, string> = {}, retried: number = 0) {
+        target = convertPath(target);
+        if (typeof file === 'string') file = createReadStream(file);
+        // TODO 大文件分块发送
+        try {
+            if (file instanceof Buffer) {
+                await this.client.api(`/me/drive/root:${this.basepath}${target}:/content`).put(file);
+            } else {
+                await this.client.api(`/me/drive/root:${this.basepath}${target}:/content`).put(Buffer.concat(await file.toArray()))
+                return;
+            }
+        }
+        catch (err) {
+            if (retried > 10) {
+                throw err;
+            }
+            await this.put(target, file, meta, retried + 1);
+        }
+    }
+    async get(target: string, path?: string) {
+        const { "@microsoft.graph.downloadUrl": downloadUrl }: {
+            id: string,
+            '@microsoft.graph.downloadUrl': string
+        } = await this.client.api(`/me/drive/items/root:${this.basepath}${target}`).get();
+        // TODO 使用原生请求
+        let stream = (await axios.get(downloadUrl, {
+            responseType: `stream`
+        })).data;
+        // console.log(res.data);
+        if (path) {
+            await new Promise<void>((resolve, reject) => {
+                const file = createWriteStream(path);
+                stream.on(`error`, reject);
+                stream.on(`end`, () => {
+                    file.close();
+                    resolve();
+                })
+                stream.pipe(file);
+            })
+            return null;
+        }
+        const p = new PassThrough();
+        stream.pipe(p);
+        return p;
+    }
+    async del(target: string | string[]) {
+        if (typeof target === 'string') target = convertPath(target);
+        else target = target.map(convertPath);
+        if (typeof target === 'string') {
+            return await this.client.api(`/me/drive/items/root:${this.basepath}${target}:/permanentDelete`).post(null);
+        }
+        const list: Promise<void>[] = [];
+        for (const t of target) {
+            list.push(this.client.api(`/me/drive/items/root:${this.basepath}${t}:/permanentDelete`).post(null));
+        }
+        return Promise.allSettled(list);
+    }
+    async getMeta(target: string) {
+        target = convertPath(target);
+        const res = await this.client.api(`/me/drive/items/root:${this.basepath}${target}`).get();
+        console.log(res);
+        return {
+            size: res.size,
+            lastModified: res.lastModifiedDateTime,
+            etag: res.eTag,
+            metaData: res
+        }
+    }
+    async signDownloadLink(target: string, filename?: string, noExpire = false, useAlternativeEndpointFor?: 'user' | 'judge'): Promise<string> {
+        target = convertPath(target);
+        const fileInfo = await this.client.api(`/me/drive/root:${this.basepath}${target}`).get();
+        return fileInfo['@microsoft.graph.downloadUrl'];
+    }
+
+
+    async status() {
+        return {
+            type: 'e5',
+            status: !this.error,
+            error: this.error,
+        };
+    }
+}
 
 class RemoteStorageService {
     public client: S3Client;
@@ -146,6 +258,7 @@ class RemoteStorageService {
     }
 
     async get(target: string, path?: string) {
+
         target = convertPath(target);
         const res = await this.client.send(new GetObjectCommand({
             Bucket: this.bucket,
@@ -272,6 +385,7 @@ class LocalStorageService {
     }
 
     async put(target: string, file: string | Buffer | Readable) {
+
         target = resolve(this.dir, convertPath(target));
         await ensureDir(dirname(target));
         if (typeof file === 'string') await copyFile(file, target);
@@ -336,7 +450,8 @@ class LocalStorageService {
 let service; // eslint-disable-line import/no-mutable-exports
 
 export async function loadStorageService() {
-    service = builtinConfig.file.type === 's3' ? new RemoteStorageService() : new LocalStorageService();
+    service = builtinConfig.file.type === 's3' ? new RemoteStorageService() :
+        (builtinConfig.file.type === 'e5' ? new MicrosoftE5StorageService() : new LocalStorageService());
     global.Hydro.service.storage = service;
     await service.start();
 }
